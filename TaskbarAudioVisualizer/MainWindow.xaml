@@ -1,0 +1,18 @@
+<Window x:Class="TaskbarAudioVisualizer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Taskbar Audio Visualizer"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Focusable="False"
+        Width="900"
+        Height="48">
+    <Grid Background="Transparent" IsHitTestVisible="False">
+        <Canvas x:Name="BarsCanvas" ClipToBounds="True" />
+    </Grid>
+</Window>
