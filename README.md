@@ -13,6 +13,8 @@ A lightweight Windows 11 audio spectrum visualizer. It captures the default play
 - Event-driven audio capture and throttled spectrum analysis.
 - Rendering starts when audio is detected and stops after the bars decay.
 - System-tray menu to show, hide, and exit. Hiding the visualizer also stops audio capture.
+- AC-power awareness: automatically shows and captures audio while plugged in; on battery it hides and stops capture/rendering.
+- Optional tray-menu override (`Allow on battery`) to temporarily run while unplugged.
 
 ## Requirements
 
@@ -29,7 +31,7 @@ dotnet restore
 dotnet run
 ```
 
-Play audio through your default Windows output device. Use the tray icon to hide/show the overlay or exit the application.
+Play audio through your default Windows output device. Use the tray icon to hide/show the overlay, allow battery operation, or exit the application. By default, the visualizer runs only while Windows reports AC power. Selecting **Allow on battery (manual override)** enables it until you turn that option off; plugging in always permits operation again.
 
 ## Publish a self-contained build
 
@@ -43,7 +45,7 @@ The output is under `bin/Release/net10.0-windows/win-x64/publish/`.
 
 ## Power-conscious design
 
-The app avoids a permanent 60 FPS animation loop. Audio arrives through WASAPI callbacks; FFT analysis is rate-limited, and the WPF render timer is only active while the bars are moving. When hidden, capture is stopped. These choices are intended to reduce background work, but actual power consumption depends on the audio driver, display, Windows compositor and hardware. No fixed CPU/RAM/battery figures are promised until measured.
+The app avoids a permanent 60 FPS animation loop. Audio arrives through WASAPI callbacks; FFT analysis is rate-limited, and the WPF render timer is only active while the bars are moving. When hidden or running on battery without the manual override, capture is stopped and the render timer is inactive. Power-source changes and resume events are observed through Windows power notifications. This build uses strict AC-only mode; the previously discussed 30% battery threshold is not applied because threshold-based battery saver is a different operating mode. These choices are intended to reduce background work, but actual power consumption depends on the audio driver, display, Windows compositor and hardware. No fixed CPU/RAM/battery figures are promised until measured.
 
 ## Limitations
 
@@ -63,7 +65,7 @@ The app avoids a permanent 60 FPS animation loop. Audio arrives through WASAPI c
 
 - Robust taskbar geometry updates and Explorer restart recovery.
 - Multi-monitor and per-monitor DPI support.
-- Automatic audio endpoint reconnection and sleep/resume recovery.
+- Automatic audio endpoint reconnection and deeper sleep/resume recovery testing.
 - Settings UI for bar count, sensitivity, height and colour.
 - Automated build validation and measured performance benchmarks.
 
