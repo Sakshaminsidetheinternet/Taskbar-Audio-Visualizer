@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Win32;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -35,11 +36,15 @@ public partial class MainWindow : Window
 
     private WasapiLoopbackCapture? _capture;
     private Forms.NotifyIcon? _trayIcon;
+    private Forms.ToolStripMenuItem? _batteryOverrideItem;
     private int _writeIndex;
     private long _lastAnalysisMs;
     private long _lastAudibleMs;
     private bool _rendering;
     private bool _hidden;
+    private bool _userHidden;
+    private bool _manualOverrideOnBattery;
+    private bool _powerSourceAllowsRun;
     private bool _closing;
 
     public MainWindow()
@@ -58,7 +63,8 @@ public partial class MainWindow : Window
             PositionOverTaskbar();
             MakeClickThrough();
             CreateTrayIcon();
-            StartAudioCapture();
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            EvaluatePowerPolicy();
         };
         SizeChanged += (_, _) => LayoutBars();
         Closing += (_, _) => Cleanup();
@@ -136,6 +142,17 @@ public partial class MainWindow : Window
             (_, _) => Dispatcher.BeginInvoke(new Action(HideVisualizer)));
         menu.Items.Add("Show visualizer", null,
             (_, _) => Dispatcher.BeginInvoke(new Action(ShowVisualizer)));
+        _batteryOverrideItem = new Forms.ToolStripMenuItem("Allow on battery (manual override)")
+        {
+            CheckOnClick = true,
+            Checked = _manualOverrideOnBattery
+        };
+        _batteryOverrideItem.CheckedChanged += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _manualOverrideOnBattery = _batteryOverrideItem.Checked;
+            EvaluatePowerPolicy();
+        }));
+        menu.Items.Add(_batteryOverrideItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit", null,
             (_, _) => Dispatcher.BeginInvoke(new Action(Close)));
@@ -156,21 +173,66 @@ public partial class MainWindow : Window
 
     private void HideVisualizer()
     {
-        if (_closing || _hidden) return;
-        _hidden = true;
-        _renderTimer.Stop();
-        _rendering = false;
-        StopAudioCapture();
-        Hide();
+        if (_closing) return;
+        _userHidden = true;
+        SuspendVisualizer();
     }
 
     private void ShowVisualizer()
     {
-        if (_closing || !_hidden) return;
-        _hidden = false;
-        PositionOverTaskbar();
-        Show();
-        StartAudioCapture();
+        if (_closing) return;
+        _userHidden = false;
+        if (!IsOnAcPower()) _manualOverrideOnBattery = true;
+        if (_batteryOverrideItem is not null)
+            _batteryOverrideItem.Checked = _manualOverrideOnBattery;
+        EvaluatePowerPolicy();
+    }
+
+    private static bool IsOnAcPower() =>
+        Forms.SystemInformation.PowerStatus.PowerLineStatus == Forms.PowerLineStatus.Online;
+
+    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode is not (PowerModes.StatusChange or PowerModes.Resume)) return;
+        Dispatcher.BeginInvoke(new Action(EvaluatePowerPolicy), DispatcherPriority.Background);
+    }
+
+    private void EvaluatePowerPolicy()
+    {
+        if (_closing) return;
+
+        bool onAc = IsOnAcPower();
+        _powerSourceAllowsRun = onAc || _manualOverrideOnBattery;
+
+        // AC power automatically enables the visualizer. On battery it stays off
+        // unless the user explicitly enables the tray-menu override.
+        if (_powerSourceAllowsRun && !_userHidden)
+        {
+            if (_hidden)
+            {
+                _hidden = false;
+                PositionOverTaskbar();
+                Show();
+            }
+            StartAudioCapture();
+        }
+        else
+        {
+            SuspendVisualizer();
+        }
+
+        if (_batteryOverrideItem is not null &&
+            _batteryOverrideItem.Checked != _manualOverrideOnBattery)
+            _batteryOverrideItem.Checked = _manualOverrideOnBattery;
+    }
+
+    private void SuspendVisualizer()
+    {
+        _hidden = true;
+        _renderTimer.Stop();
+        _rendering = false;
+        StopAudioCapture();
+        if (IsVisible) Hide();
     }
 
     private void StartAudioCapture()
@@ -412,6 +474,7 @@ public partial class MainWindow : Window
     private void Cleanup()
     {
         _closing = true;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _renderTimer.Stop();
         StopAudioCapture();
         if (_trayIcon is not null)
